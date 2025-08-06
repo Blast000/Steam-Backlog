@@ -6,21 +6,61 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg-color: #f4f4f9;
+      --text-color: #333;
+      --card-color: #fff;
+      --header-color: #2c3e50;
+      --hover-color: #f1f1f1;
+    }
+    [data-theme="dark"] {
+      --bg-color: #121212;
+      --text-color: #f4f4f4;
+      --card-color: #1e1e1e;
+      --header-color: #222;
+      --hover-color: #333;
+    }
     body {
       font-family: 'Inter', sans-serif;
-      background-color: #f4f4f9;
-      color: #333;
+      background-color: var(--bg-color);
+      color: var(--text-color);
       padding: 20px;
+      transition: background 0.3s, color 0.3s;
     }
     h1 {
       text-align: center;
-      color: #2c3e50;
+      color: var(--text-color);
+    }
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    input[type="text"] {
+      padding: 10px;
+      font-size: 1rem;
+      width: 100%;
+      max-width: 300px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    button {
+      background: #3498db;
+      color: white;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #2980b9;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 20px;
-      background: white;
+      background: var(--card-color);
       box-shadow: 0 4px 8px rgba(0,0,0,0.05);
     }
     th, td {
@@ -29,13 +69,13 @@
       border-bottom: 1px solid #eee;
     }
     th {
-      background-color: #2c3e50;
+      background-color: var(--header-color);
       color: white;
       position: sticky;
       top: 0;
     }
     tr:hover {
-      background-color: #f1f1f1;
+      background-color: var(--hover-color);
     }
     .status {
       font-weight: 600;
@@ -45,13 +85,26 @@
     .status.Completed { background: #2ecc71; color: white; }
     .status.Backlog { background: #f39c12; color: white; }
     .status.Playing { background: #3498db; color: white; }
+    .cover {
+      height: 60px;
+    }
   </style>
 </head>
-<body>
+<body data-theme="light">
   <h1>🎮 Steam Backlog Tracker</h1>
+  <div class="controls">
+    <input type="text" id="searchInput" placeholder="Search games...">
+    <button onclick="toggleTheme()">Toggle Dark Mode</button>
+  </div>
   <div id="table-container"></div>
 
   <script>
+    function toggleTheme() {
+      const body = document.body;
+      const isDark = body.getAttribute("data-theme") === "dark";
+      body.setAttribute("data-theme", isDark ? "light" : "dark");
+    }
+
     fetch("Steam Backlog - Display View.csv")
       .then(response => response.text())
       .then(csv => {
@@ -59,34 +112,46 @@
           header: true,
           complete: function(results) {
             const data = results.data;
-            const table = document.createElement('table');
-            const thead = table.createTHead();
-            const tbody = table.createTBody();
-
-            const headers = Object.keys(data[0]);
-            const headRow = thead.insertRow();
-            headers.forEach(header => {
-              const th = document.createElement('th');
-              th.textContent = header;
-              headRow.appendChild(th);
+            buildTable(data);
+            document.getElementById('searchInput').addEventListener('input', function() {
+              const searchTerm = this.value.toLowerCase();
+              const filtered = data.filter(row => row["Game Title"].toLowerCase().includes(searchTerm));
+              buildTable(filtered);
             });
-
-            data.forEach(row => {
-              const tr = tbody.insertRow();
-              headers.forEach(header => {
-                const td = tr.insertCell();
-                if (header === "Status") {
-                  td.innerHTML = `<span class="status ${row[header]}">${row[header]}</span>`;
-                } else {
-                  td.textContent = row[header];
-                }
-              });
-            });
-
-            document.getElementById('table-container').appendChild(table);
           }
         });
       });
+
+    function buildTable(data) {
+      const container = document.getElementById('table-container');
+      container.innerHTML = '';
+      const table = document.createElement('table');
+      const thead = table.createTHead();
+      const tbody = table.createTBody();
+
+      const headers = Object.keys(data[0]);
+      const headRow = thead.insertRow();
+      headers.forEach(header => {
+        const th = document.createElement('th');
+        th.textContent = header;
+        headRow.appendChild(th);
+      });
+
+      data.forEach(row => {
+        const tr = tbody.insertRow();
+        headers.forEach(header => {
+          const td = tr.insertCell();
+          if (header === "Status") {
+            td.innerHTML = `<span class="status ${row[header]}">${row[header]}</span>`;
+          } else if (header === "Cover") {
+            td.innerHTML = `<img class="cover" src="${row[header]}" alt="cover">`;
+          } else {
+            td.textContent = row[header];
+          }
+        });
+      });
+      container.appendChild(table);
+    }
   </script>
 </body>
 </html>
