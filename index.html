@@ -1,61 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
 <title>Steam Backlog</title>
 <style>
-    body {
-        font-family: Arial, sans-serif;
-        background-color: #121212;
-        color: #fff;
-        text-align: center;
-    }
-    input, select, button {
-        padding: 8px;
-        margin: 5px;
-    }
-    .spinner {
-        border: 4px solid rgba(255,255,255,0.2);
-        border-top: 4px solid #09f;
-        border-radius: 50%;
-        width: 24px;
-        height: 24px;
-        animation: spin 1s linear infinite;
-        display: inline-block;
-    }
-    @keyframes spin {
-        0% { transform: rotate(0deg);}
-        100% { transform: rotate(360deg);}
-    }
-    .game {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin: 5px;
-        background: rgba(255,255,255,0.05);
-        padding: 5px;
-        border-radius: 5px;
-    }
-    img.cover {
-        width: 100px;
-        height: auto;
-        border-radius: 5px;
-        background: rgba(255,255,255,0.05);
-    }
-    #gamesContainer {
-        max-width: 800px;
-        margin: auto;
-    }
+  body {
+    font-family: Arial, sans-serif;
+    background-color: #121212;
+    color: #fff;
+    text-align: center;
+    margin: 0;
+    padding: 20px;
+  }
+  input, select, button {
+    padding: 8px;
+    margin: 5px;
+    border-radius: 4px;
+    border: none;
+    font-size: 1rem;
+  }
+  select[multiple] {
+    width: 200px;
+    height: 100px;
+  }
+  .spinner {
+    border: 4px solid rgba(255,255,255,0.2);
+    border-top: 4px solid #09f;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+    margin-right: 10px;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg);}
+    100% { transform: rotate(360deg);}
+  }
+  .game {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 5px auto;
+    max-width: 800px;
+    background: rgba(255,255,255,0.05);
+    padding: 8px;
+    border-radius: 5px;
+  }
+  img.cover {
+    width: 100px;
+    height: auto;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.05);
+  }
+  .game span {
+    flex: 1;
+    text-align: left;
+    font-weight: bold;
+  }
+  #gamesContainer {
+    max-width: 800px;
+    margin: 20px auto;
+  }
+  #mainSpinner {
+    margin: 20px auto;
+  }
 </style>
 </head>
 <body>
 
 <h1>Steam Backlog</h1>
 
-<input type="text" id="steamInput" placeholder="Steam ID or Vanity Name">
+<input type="text" id="steamInput" placeholder="Steam ID or Vanity Name" />
 <button onclick="loadBacklog()">Load Backlog</button>
-<input type="text" id="searchInput" placeholder="Search games..." oninput="filterGames()">
-<select id="genreFilter" multiple onchange="filterGames()"></select>
+<br />
+<input type="text" id="searchInput" placeholder="Search games..." oninput="filterGames()" />
+<select id="genreFilter" multiple onchange="filterGames()" aria-label="Filter by genres"></select>
+<br />
 <button onclick="downloadCSV()">Download CSV</button>
 
 <div id="mainSpinner" style="display:none;" class="spinner"></div>
@@ -74,116 +95,142 @@ async function fetchJSON(url) {
     throw new Error("Invalid JSON response");
   }
 }
+
 async function resolveVanity(vanity) {
-    const data = await fetchJSON(`${WORKER_URL}?endpoint=vanity&vanity=${encodeURIComponent(vanity)}`);
-    if (data.response && data.response.success === 1) {
-        return data.response.steamid;
-    }
-    throw new Error("Invalid vanity username");
+  const data = await fetchJSON(`${WORKER_URL}?endpoint=vanity&vanity=${encodeURIComponent(vanity)}`);
+  if (data.response && data.response.success === 1) {
+    return data.response.steamid;
+  }
+  throw new Error("Invalid vanity username");
 }
 
 async function getOwnedGames(steamid) {
-    const data = await fetchJSON(`${WORKER_URL}?endpoint=owned&steamid=${steamid}`);
-    return data.response.games || [];
+  const data = await fetchJSON(`${WORKER_URL}?endpoint=owned&steamid=${steamid}`);
+  return data.response.games || [];
 }
 
 async function getGameDetails(appid) {
-    const data = await fetchJSON(`${WORKER_URL}?endpoint=details&appid=${appid}`);
-    return data[appid] && data[appid].success ? data[appid].data : null;
+  const data = await fetchJSON(`${WORKER_URL}?endpoint=details&appid=${appid}`);
+  return data[appid] && data[appid].success ? data[appid].data : null;
 }
 
 let allGames = [];
 
 async function loadBacklog() {
-    document.getElementById("mainSpinner").style.display = "inline-block";
-    document.getElementById("gamesContainer").innerHTML = "";
-    allGames = [];
-    document.getElementById("genreFilter").innerHTML = "";
+  document.getElementById("mainSpinner").style.display = "inline-block";
+  document.getElementById("gamesContainer").innerHTML = "";
+  allGames = [];
+  document.getElementById("genreFilter").innerHTML = "";
 
-    let idOrVanity = document.getElementById("steamInput").value.trim();
-    let steamid = idOrVanity;
+  let idOrVanity = document.getElementById("steamInput").value.trim();
+  if (!idOrVanity) {
+    alert("Please enter a Steam ID or Vanity Name");
+    document.getElementById("mainSpinner").style.display = "none";
+    return;
+  }
+
+  let steamid = idOrVanity;
+  try {
     if (isNaN(Number(idOrVanity))) {
-        steamid = await resolveVanity(idOrVanity);
+      steamid = await resolveVanity(idOrVanity);
     }
 
     const owned = await getOwnedGames(steamid);
+    if (!owned.length) {
+      alert("No games found for this user.");
+      document.getElementById("mainSpinner").style.display = "none";
+      return;
+    }
 
     // Populate games with details
     const genreSet = new Set();
     for (const game of owned) {
-        const details = await getGameDetails(game.appid);
-        if (details) {
-            const genres = details.genres ? details.genres.map(g => g.description) : [];
-            genres.forEach(g => genreSet.add(g));
-            allGames.push({
-                name: details.name,
-                genres,
-                img: details.header_image
-            });
-        }
+      const details = await getGameDetails(game.appid);
+      if (details) {
+        const genres = details.genres ? details.genres.map(g => g.description) : [];
+        genres.forEach(g => genreSet.add(g));
+        allGames.push({
+          name: details.name,
+          genres,
+          img: details.header_image || `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appid}/header.jpg`
+        });
+      }
     }
 
-    // Populate genre filter
+    // Populate genre filter options
     genreSet.forEach(g => {
-        let opt = document.createElement("option");
-        opt.value = g;
-        opt.textContent = g;
-        document.getElementById("genreFilter").appendChild(opt);
+      let opt = document.createElement("option");
+      opt.value = g;
+      opt.textContent = g;
+      document.getElementById("genreFilter").appendChild(opt);
     });
 
     renderGames(allGames);
+  } catch (err) {
+    alert("Error: " + err.message);
+  } finally {
     document.getElementById("mainSpinner").style.display = "none";
+  }
 }
 
 function renderGames(games) {
-    const container = document.getElementById("gamesContainer");
-    container.innerHTML = "";
-    games.forEach(game => {
-        const div = document.createElement("div");
-        div.className = "game";
+  const container = document.getElementById("gamesContainer");
+  container.innerHTML = "";
+  games.forEach(game => {
+    const div = document.createElement("div");
+    div.className = "game";
 
-        const img = document.createElement("img");
-        img.className = "cover";
-        const imgSpinner = document.createElement("div");
-        imgSpinner.className = "spinner";
+    const img = document.createElement("img");
+    img.className = "cover";
 
-        img.onload = () => imgSpinner.remove();
-        img.src = game.img;
+    const imgSpinner = document.createElement("div");
+    imgSpinner.className = "spinner";
 
-        const title = document.createElement("span");
-        title.textContent = game.name;
+    img.onload = () => imgSpinner.remove();
+    img.onerror = () => imgSpinner.remove();
 
-        div.appendChild(imgSpinner);
-        div.appendChild(img);
-        div.appendChild(title);
-        container.appendChild(div);
-    });
+    div.appendChild(imgSpinner);
+    div.appendChild(img);
+
+    const title = document.createElement("span");
+    title.textContent = game.name;
+
+    div.appendChild(title);
+    container.appendChild(div);
+
+    img.src = game.img;
+  });
 }
 
 function filterGames() {
-    const search = document.getElementById("searchInput").value.toLowerCase();
-    const selectedGenres = Array.from(document.getElementById("genreFilter").selectedOptions).map(o => o.value);
-    const filtered = allGames.filter(game => {
-        const matchesSearch = game.name.toLowerCase().includes(search);
-        const matchesGenre = selectedGenres.length === 0 || selectedGenres.every(g => game.genres.includes(g));
-        return matchesSearch && matchesGenre;
-    });
-    renderGames(filtered);
+  const search = document.getElementById("searchInput").value.toLowerCase();
+  const selectedGenres = Array.from(document.getElementById("genreFilter").selectedOptions).map(o => o.value);
+
+  const filtered = allGames.filter(game => {
+    const matchesSearch = game.name.toLowerCase().includes(search);
+    const matchesGenre = selectedGenres.length === 0 || selectedGenres.every(g => game.genres.includes(g));
+    return matchesSearch && matchesGenre;
+  });
+
+  renderGames(filtered);
 }
 
 function downloadCSV() {
-    let csv = "Name,Genres\n";
-    allGames.forEach(g => {
-        csv += `"${g.name}","${g.genres.join("; ")}"\n`;
-    });
-    const blob = new Blob([csv], {type: "text/csv"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "steam_backlog.csv";
-    a.click();
+  if (!allGames.length) {
+    alert("No games to download.");
+    return;
+  }
+  let csv = "Name,Genres\n";
+  allGames.forEach(g => {
+    csv += `"${g.name.replace(/"/g, '""')}","${g.genres.join("; ").replace(/"/g, '""')}"\n`;
+  });
+  const blob = new Blob([csv], {type: "text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "steam_backlog.csv";
+  a.click();
 }
 </script>
 
 </body>
 </html>
-
