@@ -1,182 +1,163 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Steam Backlog</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background-color: #121212;
-      color: #eee;
-      margin: 0;
-      padding: 1em;
-    }
-    h1 {
-      text-align: center;
-    }
-    input, button, select {
-      padding: 0.5em;
-      margin: 0.5em 0;
-      border-radius: 4px;
-      border: none;
-    }
-    button {
-      cursor: pointer;
-    }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Steam Backlog Enhanced</title>
+<style>
+  :root {
+    --bg-light: #f0f0f0;
+    --text-light: #111;
+    --bg-dark: #121212;
+    --text-dark: #eee;
+    --primary: #1b95e0;
+  }
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0; padding: 1rem;
+    background-color: var(--bg-dark);
+    color: var(--text-dark);
+    transition: background-color 0.3s, color 0.3s;
+  }
+  body.light {
+    background-color: var(--bg-light);
+    color: var(--text-light);
+  }
+  h1 {
+    text-align: center;
+  }
+  #controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-bottom: 1rem;
+  }
+  input[type=text], select, button {
+    padding: 0.5rem;
+    font-size: 1rem;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+  }
+  select[multiple] {
+    height: 6rem;
+  }
+  button {
+    background-color: var(--primary);
+    border: none;
+    color: white;
+    cursor: pointer;
+    user-select: none;
+  }
+  button:hover {
+    background-color: #1578b6;
+  }
+  #loadingSpinner, .imgSpinner {
+    border: 4px solid #ccc;
+    border-top: 4px solid var(--primary);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+    vertical-align: middle;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg);}
+    100% { transform: rotate(360deg);}
+  }
+  #games {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .game {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #444;
+    padding: 0.5rem 0;
+    gap: 1rem;
+  }
+  body.light .game {
+    border-color: #ccc;
+  }
+  .coverWrapper {
+    position: relative;
+    width: 128px;
+    height: 64px;
+    flex-shrink: 0;
+  }
+  .coverWrapper img {
+    width: 128px;
+    height: 64px;
+    object-fit: cover;
+    display: block;
+  }
+  .imgSpinner {
+    position: absolute;
+    top: calc(50% - 12px);
+    left: calc(50% - 12px);
+    z-index: 1;
+  }
+  .gameInfo {
+    flex-grow: 1;
+  }
+  .gameName {
+    font-weight: bold;
+    font-size: 1.1rem;
+    margin-bottom: 0.25rem;
+  }
+  .gameDetails {
+    font-size: 0.9rem;
+    color: #aaa;
+  }
+  body.light .gameDetails {
+    color: #555;
+  }
+  #darkModeToggle {
+    margin-left: auto;
+  }
+
+  @media (max-width: 600px) {
     .game {
-      display: flex;
-      align-items: center;
-      padding: 0.5em;
-      border-bottom: 1px solid #333;
+      flex-direction: column;
+      align-items: flex-start;
     }
-    .game img {
-      width: 64px;
-      height: 32px;
-      margin-right: 1em;
+    .coverWrapper {
+      width: 100%;
+      height: auto;
     }
-    .filters {
-      margin: 1em 0;
+    .coverWrapper img {
+      width: 100%;
+      height: auto;
     }
-    .spinner {
-      border: 4px solid #333;
-      border-top: 4px solid #fff;
-      border-radius: 50%;
-      width: 24px;
-      height: 24px;
-      animation: spin 1s linear infinite;
-      margin-right: 1em;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-  </style>
+  }
+</style>
 </head>
 <body>
-  <h1>Steam Backlog Viewer</h1>
-  <input type="text" id="steamInput" placeholder="Enter SteamID64 or Vanity URL" />
-  <button onclick="loadBacklog()">Load Backlog</button>
+<h1>Steam Backlog Enhanced</h1>
 
-  <div class="filters">
-    <input type="text" id="search" placeholder="Search games..." oninput="filterGames()" />
-    <select id="genreFilter" multiple onchange="filterGames()"></select>
-    <button onclick="downloadCSV()">Download CSV</button>
-  </div>
+<div id="controls">
+  <input type="text" id="steamInput" placeholder="Enter SteamID64 or Vanity URL" style="min-width:220px; flex-grow:1;" />
+  <button id="loadBtn">Load Backlog</button>
 
-  <div id="loading"></div>
-  <div id="games"></div>
+  <input type="text" id="search" placeholder="Search games..." style="min-width:160px;" />
+  <select id="genreFilter" multiple></select>
 
-  <script>
-    const workerBase = "https://blast000.jackedwardrose23.workers.dev/?url=";
-    let allGames = [];
+  <button id="downloadBtn">Download CSV</button>
+  <button id="darkModeToggle">Toggle Dark Mode</button>
+</div>
 
-    async function resolveVanity(vanity) {
-      const url = `${workerBase}${encodeURIComponent(`/ISteamUser/ResolveVanityURL/v1/?vanityurl=${vanity}`)}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      return data.response.steamid;
-    }
+<div id="loadingSpinner" style="text-align:center; display:none;">
+  <div style="display:inline-block;" class="imgSpinner"></div>
+</div>
 
-    async function loadBacklog() {
-      document.getElementById("games").innerHTML = "";
-      document.getElementById("loading").innerHTML = '<div class="spinner"></div>';
+<div id="games"></div>
 
-      const input = document.getElementById("steamInput").value.trim();
-      let steamID = input;
-      if (!/^\d{17}$/.test(input)) {
-        try {
-          steamID = await resolveVanity(input);
-        } catch (e) {
-          alert("Failed to resolve vanity URL.");
-          document.getElementById("loading").innerHTML = "";
-          return;
-        }
-      }
+<script>
+  const workerBase = "https://blast000.jackedwardrose23.workers.dev/?url=";
+  let allGames = [];
+  let allGenres = new Set();
 
-      const url = `${workerBase}${encodeURIComponent(`/IPlayerService/GetOwnedGames/v0001/?steamid=${steamID}&include_appinfo=true&format=json`)}`;
-      try {
-        const res = await fetch(url);
-        const data = await res.json();
-        allGames = data.response.games || [];
-        renderGames(allGames);
-      } catch (e) {
-        alert("Failed to fetch games.");
-      }
-      document.getElementById("loading").innerHTML = "";
-    }
-
-    function renderGames(games) {
-      const container = document.getElementById("games");
-      container.innerHTML = "";
-      const genreSet = new Set();
-
-      games.forEach(game => {
-        const div = document.createElement("div");
-        div.className = "game";
-
-        const img = document.createElement("img");
-        const spinner = document.createElement("div");
-        spinner.className = "spinner";
-
-        img.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.appid}/header.jpg`;
-        img.onload = () => spinner.remove();
-        img.onerror = () => { spinner.remove(); img.src = ""; };
-
-        const name = document.createElement("div");
-        name.innerHTML = `<strong>${game.name}</strong><br>Playtime: ${(game.playtime_forever/60).toFixed(1)} hrs`;
-
-        // Dummy genre assignment for demo
-        game.genre = game.playtime_forever > 100 ? "Action" : "Indie";
-        genreSet.add(game.genre);
-
-        div.appendChild(spinner);
-        div.appendChild(img);
-        div.appendChild(name);
-        container.appendChild(div);
-      });
-
-      populateGenres(Array.from(genreSet).sort());
-    }
-
-    function populateGenres(genres) {
-      const genreFilter = document.getElementById("genreFilter");
-      genreFilter.innerHTML = "";
-      genres.forEach(genre => {
-        const option = document.createElement("option");
-        option.value = genre;
-        option.textContent = genre;
-        genreFilter.appendChild(option);
-      });
-    }
-
-    function filterGames() {
-      const search = document.getElementById("search").value.toLowerCase();
-      const selectedGenres = Array.from(document.getElementById("genreFilter").selectedOptions).map(o => o.value);
-
-      const filtered = allGames.filter(g => {
-        const matchesName = g.name.toLowerCase().includes(search);
-        const matchesGenre = selectedGenres.length ? selectedGenres.includes(g.genre) : true;
-        return matchesName && matchesGenre;
-      });
-      renderGames(filtered);
-    }
-
-    function downloadCSV() {
-      let csv = "Name,Playtime (hrs),Genre\n";
-      allGames.forEach(g => {
-        csv += `"${g.name}",${(g.playtime_forever/60).toFixed(1)},${g.genre}\n`;
-      });
-
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "steam_backlog.csv";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }
-  </script>
-</body>
-</html>
+  // Dark mode toggle
+  const darkToggleBtn = document.getElementById('darkModeToggle');
+  darkToggleBtn.onclick = () => {
