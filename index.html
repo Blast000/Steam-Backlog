@@ -2,147 +2,183 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Steam Backlog</title>
 <style>
     body {
-        background-color: #1e1e1e;
-        color: #fff;
         font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-    }
-    header {
-        padding: 20px;
+        background-color: #121212;
+        color: #fff;
         text-align: center;
     }
-    input, button, select {
-        padding: 10px;
+    input, select, button {
+        padding: 8px;
         margin: 5px;
-        border-radius: 5px;
-        border: none;
     }
-    #results {
-        max-width: 900px;
-        margin: 20px auto;
+    .spinner {
+        border: 4px solid rgba(255,255,255,0.2);
+        border-top: 4px solid #09f;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        animation: spin 1s linear infinite;
+        display: inline-block;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg);}
+        100% { transform: rotate(360deg);}
     }
     .game {
         display: flex;
         align-items: center;
-        background: #2b2b2b;
-        margin: 10px 0;
-        padding: 10px;
-        border-radius: 8px;
+        gap: 10px;
+        margin: 5px;
+        background: rgba(255,255,255,0.05);
+        padding: 5px;
+        border-radius: 5px;
     }
-    .game img {
+    img.cover {
         width: 100px;
         height: auto;
         border-radius: 5px;
-        margin-right: 15px;
+        background: rgba(255,255,255,0.05);
     }
-    .spinner {
-        text-align: center;
-        padding: 20px;
+    #gamesContainer {
+        max-width: 800px;
+        margin: auto;
     }
 </style>
 </head>
 <body>
-<header>
-    <h1>Steam Backlog</h1>
-    <input type="text" id="steamId" placeholder="Enter Steam ID or Vanity Name">
-    <button onclick="loadBacklog()">Load Backlog</button>
-    <input type="text" id="searchBox" placeholder="Search games" oninput="filterGames()">
-    <select id="genreFilter" multiple size="5" onchange="filterGames()"></select>
-</header>
 
-<div id="results"></div>
+<h1>Steam Backlog</h1>
+
+<input type="text" id="steamInput" placeholder="Steam ID or Vanity Name">
+<button onclick="loadBacklog()">Load Backlog</button>
+<input type="text" id="searchInput" placeholder="Search games..." oninput="filterGames()">
+<select id="genreFilter" multiple onchange="filterGames()"></select>
+<button onclick="downloadCSV()">Download CSV</button>
+
+<div id="mainSpinner" style="display:none;" class="spinner"></div>
+<div id="gamesContainer"></div>
 
 <script>
-const workerURL = "https://blast000.jackedwardrose23.workers.dev";
- // Your Cloudflare Worker URL
+const WORKER_URL = "https://blast000.jackedwardrose23.workers.dev/";
 
 async function fetchJSON(url) {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
 }
 
-async function resolveVanity(name) {
-    const data = await fetchJSON(`${workerURL}?endpoint=vanity&vanity=${encodeURIComponent(name)}`);
-    if (data.response.success === 1) {
+async function resolveVanity(vanity) {
+    const data = await fetchJSON(`${WORKER_URL}?endpoint=vanity&vanity=${encodeURIComponent(vanity)}`);
+    if (data.response && data.response.success === 1) {
         return data.response.steamid;
-    } else {
-        throw new Error("Vanity name not found");
     }
+    throw new Error("Invalid vanity username");
 }
+
+async function getOwnedGames(steamid) {
+    const data = await fetchJSON(`${WORKER_URL}?endpoint=owned&steamid=${steamid}`);
+    return data.response.games || [];
+}
+
+async function getGameDetails(appid) {
+    const data = await fetchJSON(`${WORKER_URL}?endpoint=details&appid=${appid}`);
+    return data[appid] && data[appid].success ? data[appid].data : null;
+}
+
+let allGames = [];
 
 async function loadBacklog() {
-    const idInput = document.getElementById("steamId").value.trim();
-    const resultsDiv = document.getElementById("results");
-    resultsDiv.innerHTML = `<div class="spinner">Loading backlog...</div>`;
+    document.getElementById("mainSpinner").style.display = "inline-block";
+    document.getElementById("gamesContainer").innerHTML = "";
+    allGames = [];
     document.getElementById("genreFilter").innerHTML = "";
 
-    let steamId = idInput;
-    if (isNaN(idInput)) {
-        steamId = await resolveVanity(idInput);
+    let idOrVanity = document.getElementById("steamInput").value.trim();
+    let steamid = idOrVanity;
+    if (isNaN(Number(idOrVanity))) {
+        steamid = await resolveVanity(idOrVanity);
     }
 
-    try {
-        const data = await fetchJSON(`${workerURL}?endpoint=games&steamid=${steamId}`);
-        const games = data.response.games;
+    const owned = await getOwnedGames(steamid);
 
-        let genreSet = new Set();
-        resultsDiv.innerHTML = "";
-        for (const g of games) {
-            const storeData = await fetchJSON(`https://store.steampowered.com/api/appdetails?appids=${g.appid}`);
-            if (storeData && storeData[g.appid] && storeData[g.appid].success) {
-                const gameInfo = storeData[g.appid].data;
-                const genres = gameInfo.genres ? gameInfo.genres.map(gen => gen.description) : [];
-                genres.forEach(gen => genreSet.add(gen));
-
-                const gameEl = document.createElement("div");
-                gameEl.className = "game";
-                gameEl.dataset.name = g.name.toLowerCase();
-                gameEl.dataset.genres = genres.join(",").toLowerCase();
-
-                const img = document.createElement("img");
-                img.src = gameInfo.header_image || `https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/header.jpg`;
-                img.alt = g.name;
-
-                const title = document.createElement("div");
-                title.innerHTML = `<strong>${g.name}</strong><br><small>${genres.join(", ")}</small>`;
-
-                gameEl.appendChild(img);
-                gameEl.appendChild(title);
-                resultsDiv.appendChild(gameEl);
-            }
+    // Populate games with details
+    const genreSet = new Set();
+    for (const game of owned) {
+        const details = await getGameDetails(game.appid);
+        if (details) {
+            const genres = details.genres ? details.genres.map(g => g.description) : [];
+            genres.forEach(g => genreSet.add(g));
+            allGames.push({
+                name: details.name,
+                genres,
+                img: details.header_image
+            });
         }
-
-        // Populate genre filter
-        genreSet.forEach(gen => {
-            const opt = document.createElement("option");
-            opt.value = gen;
-            opt.textContent = gen;
-            document.getElementById("genreFilter").appendChild(opt);
-        });
-
-    } catch (err) {
-        resultsDiv.innerHTML = `<p style="color:red;">Error: ${err.message}</p>`;
     }
+
+    // Populate genre filter
+    genreSet.forEach(g => {
+        let opt = document.createElement("option");
+        opt.value = g;
+        opt.textContent = g;
+        document.getElementById("genreFilter").appendChild(opt);
+    });
+
+    renderGames(allGames);
+    document.getElementById("mainSpinner").style.display = "none";
+}
+
+function renderGames(games) {
+    const container = document.getElementById("gamesContainer");
+    container.innerHTML = "";
+    games.forEach(game => {
+        const div = document.createElement("div");
+        div.className = "game";
+
+        const img = document.createElement("img");
+        img.className = "cover";
+        const imgSpinner = document.createElement("div");
+        imgSpinner.className = "spinner";
+
+        img.onload = () => imgSpinner.remove();
+        img.src = game.img;
+
+        const title = document.createElement("span");
+        title.textContent = game.name;
+
+        div.appendChild(imgSpinner);
+        div.appendChild(img);
+        div.appendChild(title);
+        container.appendChild(div);
+    });
 }
 
 function filterGames() {
-    const search = document.getElementById("searchBox").value.toLowerCase();
-    const selectedGenres = Array.from(document.getElementById("genreFilter").selectedOptions).map(o => o.value.toLowerCase());
-
-    document.querySelectorAll(".game").forEach(game => {
-        const matchesSearch = game.dataset.name.includes(search);
-        const matchesGenre = selectedGenres.length === 0 || selectedGenres.some(gen => game.dataset.genres.includes(gen));
-        game.style.display = matchesSearch && matchesGenre ? "flex" : "none";
+    const search = document.getElementById("searchInput").value.toLowerCase();
+    const selectedGenres = Array.from(document.getElementById("genreFilter").selectedOptions).map(o => o.value);
+    const filtered = allGames.filter(game => {
+        const matchesSearch = game.name.toLowerCase().includes(search);
+        const matchesGenre = selectedGenres.length === 0 || selectedGenres.every(g => game.genres.includes(g));
+        return matchesSearch && matchesGenre;
     });
+    renderGames(filtered);
+}
+
+function downloadCSV() {
+    let csv = "Name,Genres\n";
+    allGames.forEach(g => {
+        csv += `"${g.name}","${g.genres.join("; ")}"\n`;
+    });
+    const blob = new Blob([csv], {type: "text/csv"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "steam_backlog.csv";
+    a.click();
 }
 </script>
+
 </body>
 </html>
-
-
