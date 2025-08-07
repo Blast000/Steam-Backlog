@@ -54,7 +54,7 @@
     try {
       const list = await fetchJSON(`/IPlayerService/GetOwnedGames/v0001/?steamid=${steamID}&include_appinfo=true&format=json`);
       for (const g of list.response.games || []) {
-        const info = await fetchJSON(`/games/steam.php?game=${g.appid}`); // Unofficial API:contentReference[oaicite:2]{index=2}
+        const info = await fetchJSON(`https://store.steampowered.com/api/appdetails?appids=${g.appid}`); // Unofficial API:contentReference[oaicite:2]{index=2}
         const hltb = await fetch(`https://hltb.berkankutuk.dk/api/search?q=${encodeURIComponent(g.name)}`)
           .then(r => r.json()).then(r => r.results[0] || { times: { main: '', completionist: '' } }).catch(() => ({ times: { main: '', completionist: '' } }));
 
@@ -121,3 +121,4 @@
   </script>
 </body>
 </html>
+
