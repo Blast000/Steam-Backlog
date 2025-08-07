@@ -2,214 +2,90 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Steam Backlog</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Steam Backlog Viewer</title>
   <style>
     body {
-      background-color: #121212;
-      color: #e0e0e0;
+      font-family: sans-serif;
+      margin: 2rem;
+      max-width: 800px;
     }
-    .table img {
-      width: 60px;
-      height: auto;
-      border-radius: 6px;
+    input, button {
+      padding: 0.5rem;
+      font-size: 1rem;
+      margin: 0.25rem;
     }
-    .form-control, .form-select {
-      background-color: #1e1e1e;
-      color: #e0e0e0;
-      border: 1px solid #444;
-    }
-    .form-control:focus, .form-select:focus {
-      border-color: #888;
-      box-shadow: none;
+    #backlog p {
+      margin: 0.3rem 0;
     }
   </style>
 </head>
 <body>
-  <h2>Enter your Steam ID (64-bit)</h2>
-<input id="steamIDInput" placeholder="e.g. 76561198000000000" />
-<button id="loadBtn">Load My Backlog</button>
-<button id="saveBtn">Save Backlog to CSV</button>
+  <h1>Steam Backlog Viewer</h1>
 
-<div id="backlog"></div>
+  <p>Enter your 64-bit Steam ID to load your owned games.</p>
+  <p>Find your ID at <a href="https://steamid.io" target="_blank">steamid.io</a></p>
 
-  <div class="container py-5">
-    <h1 class="mb-4">🎮 Steam Backlog</h1>
+  <input id="steamIDInput" placeholder="e.g. 76561198000000000" />
+  <button id="loadBtn">Load My Backlog</button>
+  <button id="saveBtn">Save Backlog to CSV</button>
 
-    <div class="row mb-4">
-      <div class="col-md-6">
-        <input type="text" id="searchInput" class="form-control" placeholder="Search games..." />
-      </div>
-      <div class="col-md-3">
-        <select id="statusFilter" class="form-select">
-          <option value="">All Statuses</option>
-        </select>
-      </div>
-      <div class="col-md-3">
-        <select id="genreFilter" class="form-select">
-          <option value="">All Genres</option>
-        </select>
-      </div>
-    </div>
-
-    <table class="table table-dark table-striped">
-      <thead>
-        <tr>
-          <th>Game</th>
-          <th>Status</th>
-          <th>HLTB (hrs)</th>
-          <th>Played (hrs)</th>
-          <th>Genres</th>
-        </tr>
-      </thead>
-      <tbody id="gameTable">
-        <!-- Rows injected by JS -->
-      </tbody>
-    </table>
-  </div>
+  <h2>Your Games:</h2>
+  <div id="backlog"></div>
 
   <script>
-    const games = [];
+    const apiKey = 'FE4B00EA4F8A36A9B4A9636BEBC325DD'; // 🔁 Replace this with your real API key
 
-    const genreTranslation = {
-      "Abenteuer": "Adventure",
-      "Strategie": "Strategy",
-      "Action": "Action",
-      "RPG": "RPG",
-      "Indie": "Indie",
-      "Simulation": "Simulation",
-      "Sport": "Sports",
-      "Mehrspieler": "Multiplayer"
-      // Add more as needed
-    };
+    async function loadBacklog(steamID) {
+      const response = await fetch(
+        `https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamID}&include_appinfo=true&format=json`
+      );
+      const data = await response.json();
+      return data.response.games || [];
+    }
 
-    fetch("Steam%20Backlog%20-%20Display%20View.csv")
-      .then(response => response.text())
-      .then(data => {
-        const rows = data.trim().split("\n");
-        const headers = rows.shift().split(",");
-
-        rows.forEach(row => {
-          const values = row.split(",");
-          const [title, status, hltb, played, cover, genres] = values;
-          games.push({ title, status, hltb, played, cover, genres });
-        });
-
-        populateGenres();
-        populateStatuses();
-        renderTable();
-      });
-
-    function renderTable() {
-      const search = document.getElementById("searchInput").value.toLowerCase();
-      const status = document.getElementById("statusFilter").value;
-      const genre = document.getElementById("genreFilter").value;
-
-      const tbody = document.getElementById("gameTable");
-      tbody.innerHTML = "";
-
+    function renderBacklog(games) {
+      const container = document.getElementById('backlog');
+      container.innerHTML = '';
+      if (games.length === 0) {
+        container.innerHTML = '<p>No games found or Steam profile is private.</p>';
+        return;
+      }
       games.forEach(game => {
-        const translatedGenres = game.genres.split(";").map(g => genreTranslation[g.trim()] || g.trim()).join(", ");
-
-        if (
-          (search && !game.title.toLowerCase().includes(search)) ||
-          (status && game.status !== status) ||
-          (genre && !translatedGenres.includes(genre))
-        ) return;
-
-        const row = document.createElement("tr");
-        row.innerHTML = `
-          <td>
-            <div class="d-flex align-items-center gap-2">
-              <img src="${game.cover}" alt="cover" onerror="this.src='default.jpg'" />
-              <span>${game.title}</span>
-            </div>
-          </td>
-          <td>${game.status}</td>
-          <td>${parseFloat(game.hltb || 0).toFixed(0)}</td>
-          <td>${parseFloat(game.played || 0).toFixed(0)}</td>
-          <td>${translatedGenres}</td>
-        `;
-        tbody.appendChild(row);
+        const p = document.createElement('p');
+        p.textContent = `${game.name} — ${(game.playtime_forever / 60).toFixed(1)} hrs`;
+        container.appendChild(p);
       });
     }
 
-    function populateGenres() {
-      const genreSet = new Set();
-      games.forEach(g => {
-        g.genres.split(";").forEach(gen => {
-          const trimmed = gen.trim();
-          const translated = genreTranslation[trimmed] || trimmed;
-          genreSet.add(translated);
-        });
-      });
-
-      const genreFilter = document.getElementById("genreFilter");
-      [...genreSet].sort().forEach(genre => {
-        const option = document.createElement("option");
-        option.value = genre;
-        option.textContent = genre;
-        genreFilter.appendChild(option);
-      });
-    }
-
-    function populateStatuses() {
-      const statusSet = new Set(games.map(g => g.status));
-      const statusFilter = document.getElementById("statusFilter");
-      [...statusSet].sort().forEach(status => {
-        const option = document.createElement("option");
-        option.value = status;
-        option.textContent = status;
-        statusFilter.appendChild(option);
-      });
-    }
-
-    document.getElementById("searchInput").addEventListener("input", renderTable);
-    document.getElementById("statusFilter").addEventListener("change", renderTable);
-    document.getElementById("genreFilter").addEventListener("change", renderTable);
-  </script>
-  <script>
-  const apiKey = 'FE4B00EA4F8A36A9B4A9636BEBC325DD';
-
-  async function loadBacklog(steamID) {
-    const response = await fetch(
-      `https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamID}&include_appinfo=true&format=json`
-    );
-    const data = await response.json();
-    return data.response.games || [];
-  }
-
-  function renderBacklog(games) {
-    const div = document.getElementById('backlog');
-    div.innerHTML = '';
-    games.forEach(game => {
-      const p = document.createElement('p');
-      p.textContent = `${game.name} — Playtime: ${(game.playtime_forever / 60).toFixed(1)} hrs`;
-      div.appendChild(p);
+    document.getElementById('loadBtn').addEventListener('click', async () => {
+      const steamID = document.getElementById('steamIDInput').value.trim();
+      if (!steamID) {
+        alert('Please enter a valid Steam ID.');
+        return;
+      }
+      const games = await loadBacklog(steamID);
+      localStorage.setItem('backlog_' + steamID, JSON.stringify(games));
+      renderBacklog(games);
     });
-  }
 
-  document.getElementById('loadBtn').addEventListener('click', async () => {
-    const steamID = document.getElementById('steamIDInput').value;
-    const games = await loadBacklog(steamID);
-    localStorage.setItem('backlog_' + steamID, JSON.stringify(games));
-    renderBacklog(games);
-  });
-
-  document.getElementById('saveBtn').addEventListener('click', () => {
-    const steamID = document.getElementById('steamIDInput').value;
-    const games = JSON.parse(localStorage.getItem('backlog_' + steamID) || '[]');
-    const csv = games.map(g => `"${g.name}",${g.appid},${(g.playtime_forever / 60).toFixed(1)} hrs`).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `steam_backlog_${steamID}.csv`;
-    a.click();
-  });
-</script>
-
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const steamID = document.getElementById('steamIDInput').value.trim();
+      const games = JSON.parse(localStorage.getItem('backlog_' + steamID) || '[]');
+      if (games.length === 0) {
+        alert('No games to save.');
+        return;
+      }
+      const csv = games.map(g =>
+        `"${g.name.replace(/"/g, '""')}",${g.appid},${(g.playtime_forever / 60).toFixed(1)}`
+      ).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `steam_backlog_${steamID}.csv`;
+      a.click();
+    });
+  </script>
 </body>
 </html>
-
