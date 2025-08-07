@@ -34,14 +34,21 @@
   <div id="backlog"></div>
 
   <script>
-    const apiKey = 'FE4B00EA4F8A36A9B4A9636BEBC325DD'; // 🔁 Replace this with your real API key
+    const apiKey = 'FE4B00EA4F8A36A9B4A9636BEBC325DD'; // 🔁 Replace this with your real Steam API key
 
     async function loadBacklog(steamID) {
-      const response = await fetch(
-        `https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamID}&include_appinfo=true&format=json`
-      );
-      const data = await response.json();
-      return data.response.games || [];
+      const url = `https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamID}&include_appinfo=true&format=json`;
+      const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+
+      try {
+        const response = await fetch(corsProxyUrl);
+        const data = await response.json();
+        return data.response.games || [];
+      } catch (err) {
+        console.error("Failed to fetch games:", err);
+        alert("Error loading data. Make sure your Steam profile is public.");
+        return [];
+      }
     }
 
     function renderBacklog(games) {
@@ -67,6 +74,7 @@
       const games = await loadBacklog(steamID);
       localStorage.setItem('backlog_' + steamID, JSON.stringify(games));
       renderBacklog(games);
+      alert(`Loaded ${games.length} games.`);
     });
 
     document.getElementById('saveBtn').addEventListener('click', () => {
