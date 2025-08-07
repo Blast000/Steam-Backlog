@@ -1,99 +1,126 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
   <title>Steam Backlog Viewer</title>
   <style>
     body {
-      font-family: sans-serif;
-      margin: 2rem;
-      max-width: 800px;
+      background-color: #121212;
+      color: #eee;
+      font-family: Arial, sans-serif;
+      padding: 2em;
     }
     input, button {
-      padding: 0.5rem;
-      font-size: 1rem;
-      margin: 0.25rem;
+      padding: 0.5em;
+      margin-right: 0.5em;
+      background: #1e1e1e;
+      border: 1px solid #444;
+      color: #eee;
     }
-    #backlog p {
-      margin: 0.3rem 0;
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 2em;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 0.5em;
+      text-align: left;
+    }
+    th {
+      background-color: #222;
     }
   </style>
 </head>
 <body>
+
   <h1>Steam Backlog Viewer</h1>
+  <p>Enter your Steam ID64 or Vanity Username:</p>
 
-  <p>Enter your 64-bit Steam ID to load your owned games.</p>
-  <p>Find your ID at <a href="https://steamid.io" target="_blank">steamid.io</a></p>
+  <input type="text" id="steamInput" placeholder="e.g. blast000 or 7656119..." />
+  <button onclick="start()">Load My Backlog</button>
 
-  <input id="steamIDInput" placeholder="e.g. 76561198000000000" />
-  <button id="loadBtn">Load My Backlog</button>
-  <button id="saveBtn">Save Backlog to CSV</button>
-
-  <h2>Your Games:</h2>
-  <div id="backlog"></div>
+  <table id="gamesTable" style="display:none;">
+    <thead>
+      <tr>
+        <th>Game</th>
+        <th>Playtime (hrs)</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
   <script>
-    const apiKey = 'FE4B00EA4F8A36A9B4A9636BEBC325DD'; // 🔁 Replace this with your real Steam API key
+    const apiKey = 'FE4B00EA4F8A36A9B4A9636BEBC325DD';
+
+    async function resolveVanity(username) {
+      const url = `https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/?key=${apiKey}&vanityurl=${username}`;
+      const corsUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+      const res = await fetch(corsUrl);
+      const data = await res.json();
+      if (data.response.success === 1) {
+        return data.response.steamid;
+      } else {
+        throw new Error("Could not resolve vanity username");
+      }
+    }
 
     async function loadBacklog(steamID) {
       const url = `https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=${apiKey}&steamid=${steamID}&include_appinfo=true&format=json`;
-      const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-
+      const corsUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+      
       try {
-        const response = await fetch(corsProxyUrl);
-        const data = await response.json();
-        return data.response.games || [];
+        const res = await fetch(corsUrl);
+        const data = await res.json();
+        const games = data.response.games;
+        displayGames(games);
       } catch (err) {
         console.error("Failed to fetch games:", err);
-        alert("Error loading data. Make sure your Steam profile is public.");
-        return [];
+        alert("Could not load games. Make sure your Steam profile is public.");
       }
     }
 
-    function renderBacklog(games) {
-      const container = document.getElementById('backlog');
-      container.innerHTML = '';
-      if (games.length === 0) {
-        container.innerHTML = '<p>No games found or Steam profile is private.</p>';
-        return;
-      }
+    function displayGames(games) {
+      const table = document.getElementById('gamesTable');
+      const tbody = table.querySelector('tbody');
+      tbody.innerHTML = '';
+
       games.forEach(game => {
-        const p = document.createElement('p');
-        p.textContent = `${game.name} — ${(game.playtime_forever / 60).toFixed(1)} hrs`;
-        container.appendChild(p);
+        const row = document.createElement('tr');
+        const title = document.createElement('td');
+        const playtime = document.createElement('td');
+        title.textContent = game.name;
+        playtime.textContent = (game.playtime_forever / 60).toFixed(1);
+        row.appendChild(title);
+        row.appendChild(playtime);
+        tbody.appendChild(row);
       });
+
+      table.style.display = 'table';
     }
 
-    document.getElementById('loadBtn').addEventListener('click', async () => {
-      const steamID = document.getElementById('steamIDInput').value.trim();
-      if (!steamID) {
-        alert('Please enter a valid Steam ID.');
-        return;
-      }
-      const games = await loadBacklog(steamID);
-      localStorage.setItem('backlog_' + steamID, JSON.stringify(games));
-      renderBacklog(games);
-      alert(`Loaded ${games.length} games.`);
-    });
+    async function start() {
+      const input = document.getElementById('steamInput').value.trim();
 
-    document.getElementById('saveBtn').addEventListener('click', () => {
-      const steamID = document.getElementById('steamIDInput').value.trim();
-      const games = JSON.parse(localStorage.getItem('backlog_' + steamID) || '[]');
-      if (games.length === 0) {
-        alert('No games to save.');
+      if (!input) {
+        alert("Please enter a Steam ID or username.");
         return;
       }
-      const csv = games.map(g =>
-        `"${g.name.replace(/"/g, '""')}",${g.appid},${(g.playtime_forever / 60).toFixed(1)}`
-      ).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `steam_backlog_${steamID}.csv`;
-      a.click();
-    });
+
+      let steamID = input;
+
+      if (isNaN(input)) {
+        try {
+          steamID = await resolveVanity(input);
+        } catch (err) {
+          alert("Failed to resolve username.");
+          return;
+        }
+      }
+
+      loadBacklog(steamID);
+    }
   </script>
+
 </body>
 </html>
