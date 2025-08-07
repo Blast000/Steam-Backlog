@@ -1,124 +1,145 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Steam Backlog Enhanced</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <style>
-    body { font-family: Arial, sans-serif; background: #121212; color: #eee; margin:0; padding:1rem; }
-    .controls { display: flex; flex-wrap: wrap; gap:0.5rem; margin-bottom:1rem; }
-    input, button, select { padding:0.5rem; border-radius:4px; border:none; }
-    button { cursor: pointer; background:#333; color:#eee; }
-    .spinner { border:3px solid rgba(255,255,255,0.2); border-top:3px solid #eee; border-radius:50%; width:18px; height:18px; animation:spin 1s linear infinite; display:inline-block; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .game { display:flex; align-items:center; margin-bottom:1rem; }
-    .game img { width:80px; height:auto; margin-right:1rem; border-radius:4px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Steam Backlog</title>
+<style>
+    body {
+        background-color: #1e1e1e;
+        color: #fff;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+    }
+    header {
+        padding: 20px;
+        text-align: center;
+    }
+    input, button, select {
+        padding: 10px;
+        margin: 5px;
+        border-radius: 5px;
+        border: none;
+    }
+    #results {
+        max-width: 900px;
+        margin: 20px auto;
+    }
+    .game {
+        display: flex;
+        align-items: center;
+        background: #2b2b2b;
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 8px;
+    }
+    .game img {
+        width: 100px;
+        height: auto;
+        border-radius: 5px;
+        margin-right: 15px;
+    }
+    .spinner {
+        text-align: center;
+        padding: 20px;
+    }
+</style>
 </head>
 <body>
-  <h1>Steam Backlog Enhanced</h1>
-  <div class="controls">
-    <input id="steamInput" placeholder="SteamID64 or Vanity URL" />
+<header>
+    <h1>Steam Backlog</h1>
+    <input type="text" id="steamId" placeholder="Enter Steam ID or Vanity Name">
     <button onclick="loadBacklog()">Load Backlog</button>
-    <input id="searchInput" placeholder="Search games..." oninput="filterGames()" />
-    <select id="genreFilter" multiple onchange="filterGames()"></select>
-    <button onclick="downloadCSV()">Download CSV</button>
-  </div>
-  <div id="loading"></div>
-  <div id="games"></div>
+    <input type="text" id="searchBox" placeholder="Search games" oninput="filterGames()">
+    <select id="genreFilter" multiple size="5" onchange="filterGames()"></select>
+</header>
 
-  <script>
-  const WORKER = 'https://blast000.jackedwardrose23.workers.dev/?url=';
-  let games = [];
+<div id="results"></div>
 
-  async function fetchJSON(path) {
-    const res = await fetch(WORKER + encodeURIComponent(path));
-    return res.json();
-  }
+<script>
+const workerURL = "YOUR_WORKER_URL"; // Your Cloudflare Worker URL
 
-  async function resolveVanity(vanity) {
-    const data = await fetchJSON(`/ISteamUser/ResolveVanityURL/v1/?vanityurl=${vanity}`);
-    return data.response.success === 1 ? data.response.steamid : null;
-  }
+async function fetchJSON(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+}
 
-  async function loadBacklog() {
-    const input = document.getElementById('steamInput').value.trim();
-    if (!input) return alert('Enter SteamID or Vanity.');
-    const loading = document.getElementById('loading');
-    loading.innerHTML = '<span class="spinner"></span> Loading...';
-    games = [];
+async function resolveVanity(name) {
+    const data = await fetchJSON(`${workerURL}?endpoint=vanity&vanity=${encodeURIComponent(name)}`);
+    if (data.response.success === 1) {
+        return data.response.steamid;
+    } else {
+        throw new Error("Vanity name not found");
+    }
+}
 
-    let steamID = /^\d+$/.test(input) ? input : await resolveVanity(input);
-    if (!steamID) { alert('Invalid Vanity URL'); loading.textContent = ''; return; }
+async function loadBacklog() {
+    const idInput = document.getElementById("steamId").value.trim();
+    const resultsDiv = document.getElementById("results");
+    resultsDiv.innerHTML = `<div class="spinner">Loading backlog...</div>`;
+    document.getElementById("genreFilter").innerHTML = "";
+
+    let steamId = idInput;
+    if (isNaN(idInput)) {
+        steamId = await resolveVanity(idInput);
+    }
 
     try {
-      const list = await fetchJSON(`/IPlayerService/GetOwnedGames/v0001/?steamid=${steamID}&include_appinfo=true&format=json`);
-      for (const g of list.response.games || []) {
-        const info = await fetchJSON(`https://store.steampowered.com/api/appdetails?appids=${g.appid}`); // Unofficial API:contentReference[oaicite:2]{index=2}
-        const hltb = await fetch(`https://hltb.berkankutuk.dk/api/search?q=${encodeURIComponent(g.name)}`)
-          .then(r => r.json()).then(r => r.results[0] || { times: { main: '', completionist: '' } }).catch(() => ({ times: { main: '', completionist: '' } }));
+        const data = await fetchJSON(`${workerURL}?endpoint=games&steamid=${steamId}`);
+        const games = data.response.games;
 
-        games.push({
-          name: g.name,
-          playtime: (g.playtime_forever / 60).toFixed(1),
-          img: `https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/header.jpg`,
-          genres: info.data.genre || '',
-          hltb_main: hltb.times.main,
-          hltb_complete: hltb.times.completionist
+        let genreSet = new Set();
+        resultsDiv.innerHTML = "";
+        for (const g of games) {
+            const storeData = await fetchJSON(`https://store.steampowered.com/api/appdetails?appids=${g.appid}`);
+            if (storeData && storeData[g.appid] && storeData[g.appid].success) {
+                const gameInfo = storeData[g.appid].data;
+                const genres = gameInfo.genres ? gameInfo.genres.map(gen => gen.description) : [];
+                genres.forEach(gen => genreSet.add(gen));
+
+                const gameEl = document.createElement("div");
+                gameEl.className = "game";
+                gameEl.dataset.name = g.name.toLowerCase();
+                gameEl.dataset.genres = genres.join(",").toLowerCase();
+
+                const img = document.createElement("img");
+                img.src = gameInfo.header_image || `https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/header.jpg`;
+                img.alt = g.name;
+
+                const title = document.createElement("div");
+                title.innerHTML = `<strong>${g.name}</strong><br><small>${genres.join(", ")}</small>`;
+
+                gameEl.appendChild(img);
+                gameEl.appendChild(title);
+                resultsDiv.appendChild(gameEl);
+            }
+        }
+
+        // Populate genre filter
+        genreSet.forEach(gen => {
+            const opt = document.createElement("option");
+            opt.value = gen;
+            opt.textContent = gen;
+            document.getElementById("genreFilter").appendChild(opt);
         });
-      }
-      renderGames(games);
-      populateFilter();
-    } catch (e) {
-      console.error(e);
-      alert('Error loading backlog.');
-    } finally {
-      loading.textContent = '';
+
+    } catch (err) {
+        resultsDiv.innerHTML = `<p style="color:red;">Error: ${err.message}</p>`;
     }
-  }
+}
 
-  function renderGames(list) {
-    const container = document.getElementById('games');
-    container.innerHTML = list.map(g => `
-      <div class="game">
-        <img src="${g.img}" onerror="this.src='';"/>
-        <div>
-          <strong>${g.name}</strong><br>
-          Playtime: ${g.playtime} hrs<br>
-          Genres: ${g.genres}<br>
-          HLTB: ${g.hltb_main} / ${g.hltb_complete}
-        </div>
-      </div>
-    `).join('');
-  }
+function filterGames() {
+    const search = document.getElementById("searchBox").value.toLowerCase();
+    const selectedGenres = Array.from(document.getElementById("genreFilter").selectedOptions).map(o => o.value.toLowerCase());
 
-  function populateFilter() {
-    const sel = document.getElementById('genreFilter');
-    const genres = Array.from(new Set(games.map(g => g.genres).filter(g => g))).sort();
-    sel.innerHTML = genres.map(g => `<option value="${g}">${g}</option>`).join('');
-  }
-
-  function filterGames() {
-    const search = document.getElementById('searchInput').value.toLowerCase();
-    const selected = Array.from(document.getElementById('genreFilter').selectedOptions).map(o => o.value);
-    const filtered = games.filter(g => {
-      return g.name.toLowerCase().includes(search) &&
-        (selected.length ? selected.includes(g.genres) : true);
+    document.querySelectorAll(".game").forEach(game => {
+        const matchesSearch = game.dataset.name.includes(search);
+        const matchesGenre = selectedGenres.length === 0 || selectedGenres.some(gen => game.dataset.genres.includes(gen));
+        game.style.display = matchesSearch && matchesGenre ? "flex" : "none";
     });
-    renderGames(filtered);
-  }
-
-  function downloadCSV() {
-    let csv = 'Name,Playtime,Genres,HLTB Main,HLTB Full\n';
-    games.forEach(g => {
-      csv += `"${g.name}",${g.playtime},"${g.genres}","${g.hltb_main}","${g.hltb_complete}"\n`;
-    });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = 'backlog.csv';
-    a.click();
-  }
-  </script>
+}
+</script>
 </body>
 </html>
-
