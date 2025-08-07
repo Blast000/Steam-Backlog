@@ -24,11 +24,6 @@
       border-color: #888;
       box-shadow: none;
     }
-    .game-title {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
   </style>
 </head>
 <body>
@@ -42,11 +37,6 @@
       <div class="col-md-3">
         <select id="statusFilter" class="form-select">
           <option value="">All Statuses</option>
-          <option value="Backlog">Backlog</option>
-          <option value="Dropped">Dropped</option>
-          <option value="Completed">Completed</option>
-          <option value="Arcade">Arcade</option>
-          <option value="Multiplayer">Multiplayer</option>
         </select>
       </div>
       <div class="col-md-3">
@@ -59,7 +49,7 @@
     <table class="table table-dark table-striped">
       <thead>
         <tr>
-          <th>Title</th>
+          <th>Game</th>
           <th>Status</th>
           <th>HLTB (hrs)</th>
           <th>Played (hrs)</th>
@@ -67,7 +57,7 @@
         </tr>
       </thead>
       <tbody id="gameTable">
-        <!-- Game rows go here -->
+        <!-- Rows injected by JS -->
       </tbody>
     </table>
   </div>
@@ -75,7 +65,19 @@
   <script>
     const games = [];
 
-    fetch("steam_backlog.csv")
+    const genreTranslation = {
+      "Abenteuer": "Adventure",
+      "Strategie": "Strategy",
+      "Action": "Action",
+      "RPG": "RPG",
+      "Indie": "Indie",
+      "Simulation": "Simulation",
+      "Sport": "Sports",
+      "Mehrspieler": "Multiplayer"
+      // Add more as needed
+    };
+
+    fetch("Steam%20Backlog%20-%20Display%20View.csv")
       .then(response => response.text())
       .then(data => {
         const rows = data.trim().split("\n");
@@ -88,6 +90,7 @@
         });
 
         populateGenres();
+        populateStatuses();
         renderTable();
       });
 
@@ -100,24 +103,26 @@
       tbody.innerHTML = "";
 
       games.forEach(game => {
+        const translatedGenres = game.genres.split(";").map(g => genreTranslation[g.trim()] || g.trim()).join(", ");
+
         if (
           (search && !game.title.toLowerCase().includes(search)) ||
           (status && game.status !== status) ||
-          (genre && !game.genres.includes(genre))
+          (genre && !translatedGenres.includes(genre))
         ) return;
 
         const row = document.createElement("tr");
         row.innerHTML = `
           <td>
-            <div class="game-title">
-              <img src="${game.cover}" alt="cover" onerror="this.style.display='none'"/>
+            <div class="d-flex align-items-center gap-2">
+              <img src="${game.cover}" alt="cover" onerror="this.src='default.jpg'" />
               <span>${game.title}</span>
             </div>
           </td>
           <td>${game.status}</td>
           <td>${parseFloat(game.hltb || 0).toFixed(0)}</td>
           <td>${parseFloat(game.played || 0).toFixed(0)}</td>
-          <td>${game.genres}</td>
+          <td>${translatedGenres}</td>
         `;
         tbody.appendChild(row);
       });
@@ -126,9 +131,11 @@
     function populateGenres() {
       const genreSet = new Set();
       games.forEach(g => {
-        if (g.genres) {
-          g.genres.split(";").forEach(gen => genreSet.add(gen.trim()));
-        }
+        g.genres.split(";").forEach(gen => {
+          const trimmed = gen.trim();
+          const translated = genreTranslation[trimmed] || trimmed;
+          genreSet.add(translated);
+        });
       });
 
       const genreFilter = document.getElementById("genreFilter");
@@ -137,6 +144,17 @@
         option.value = genre;
         option.textContent = genre;
         genreFilter.appendChild(option);
+      });
+    }
+
+    function populateStatuses() {
+      const statusSet = new Set(games.map(g => g.status));
+      const statusFilter = document.getElementById("statusFilter");
+      [...statusSet].sort().forEach(status => {
+        const option = document.createElement("option");
+        option.value = status;
+        option.textContent = status;
+        statusFilter.appendChild(option);
       });
     }
 
